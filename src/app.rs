@@ -1,3 +1,7 @@
+use crate::timesync::TimeSync;
+use crate::timewriter::TimeWriter;
+use cortex_m::asm::wfi;
+use defmt::{info, trace, warn};
 use embedded_hal::serial::Write;
 use nb::block;
 use stm32f1xx_hal::{
@@ -6,9 +10,6 @@ use stm32f1xx_hal::{
     rtc::Rtc,
     serial::{Config, Serial},
 };
-
-use crate::timesync::TimeSync;
-use crate::timewriter::TimeWriter;
 
 static mut APPLICATION: Option<Application> = None;
 
@@ -82,16 +83,24 @@ impl Application {
 
         unsafe {
             APPLICATION = Some(application);
+        }
+    }
+
+    fn enable_interrupts() {
+        unsafe {
             cortex_m::peripheral::NVIC::unmask(stm32f1xx_hal::pac::Interrupt::RTC);
             cortex_m::peripheral::NVIC::unmask(stm32f1xx_hal::pac::Interrupt::USART1);
         }
     }
 
     fn run_internal(&mut self) -> ! {
-        loop {}
+        loop {
+            wfi();
+        }
     }
 
     fn on_rtc_internal(&mut self) {
+        trace!("RTC");
         self.rtc.clear_second_flag();
         let timestamp = self.rtc.current_time();
         self.time_writer.write(timestamp, |val| {
@@ -100,24 +109,15 @@ impl Application {
     }
 
     fn on_usart1_internal(&mut self) {
+        trace!("USART1");
         if let Ok(val) = self.serial1_rx.read() {
             self.time_sync.receive_word(val, |val| {
                 self.rtc.set_time(val);
+                info!("Set time: {}", val);
             });
+        } else {
+            warn!("USART1 receive error.");
         }
-    }
-
-    pub unsafe fn run() -> ! {
-        Self::init();
-        Self::get_application().run_internal();
-    }
-
-    pub unsafe fn on_rtc() {
-        Self::get_application().on_rtc_internal();
-    }
-
-    pub unsafe fn on_usart1() {
-        Self::get_application().on_usart1_internal();
     }
 
     fn logger_write_internal(&mut self, bytes: &[u8]) {
@@ -126,15 +126,38 @@ impl Application {
         }
     }
 
-    pub unsafe fn logger_write(bytes: &[u8]) {
-        Self::get_application().logger_write_internal(bytes);
-    }
-
     unsafe fn get_application() -> &'static mut Application {
         if let Some(application) = APPLICATION.as_mut() {
             return application;
         } else {
             panic!("No application");
         }
+    }
+
+    pub unsafe fn run() -> ! {
+        let mut app = None;
+        cortex_m::interrupt::free(|_| {
+            Self::init();
+            Self::enable_interrupts();
+            app = Some(Self::get_application());
+            info!("initialized.");
+        });
+        app.unwrap().run_internal();
+    }
+
+    pub unsafe fn on_rtc() {
+        cortex_m::interrupt::free(|_| {
+            Self::get_application().on_rtc_internal();
+        });
+    }
+
+    pub unsafe fn on_usart1() {
+        cortex_m::interrupt::free(|_| {
+            Self::get_application().on_usart1_internal();
+        });
+    }
+
+    pub unsafe fn logger_write(bytes: &[u8]) {
+        Self::get_application().logger_write_internal(bytes);
     }
 }

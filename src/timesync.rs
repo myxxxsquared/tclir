@@ -1,3 +1,6 @@
+
+use defmt::{trace, warn};
+
 enum TimeSyncState {
     Begin,
     Magic1,
@@ -28,6 +31,7 @@ impl TimeSync {
                     if let TimeSyncState::Magic1 = self.state {
                         self.state = TimeSyncState::Receiving;
                         self.value = 0;
+                        trace!("TimeSyncState::Receiving");
                         return;
                     }
                 }
@@ -43,6 +47,7 @@ impl TimeSync {
                 return;
             }
         }
+        warn!("Received wrong value: {}", val);
         self.state = TimeSyncState::Begin;
     }
 }
