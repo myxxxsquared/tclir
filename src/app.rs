@@ -1,14 +1,14 @@
 use crate::timesync::TimeSync;
 use crate::timewriter::TimeWriter;
-use cortex_m::asm::wfi;
-use defmt::{info, trace, warn};
+use cortex_m::{asm::wfi, peripheral::NVIC};
+use defmt::{info, warn};
 use embedded_hal::serial::Write;
 use nb::block;
 use stm32f1xx_hal::{
-    pac,
+    pac::{Interrupt, Peripherals, USART1, USART2},
     prelude::*,
     rtc::Rtc,
-    serial::{Config, Serial},
+    serial::{Config, Rx, Serial, Tx},
 };
 
 static mut APPLICATION: Option<Application> = None;
@@ -17,25 +17,31 @@ pub struct Application {
     rtc: Rtc,
     time_sync: TimeSync,
     time_writer: TimeWriter,
-    serial1_tx: stm32f1xx_hal::serial::Tx<stm32f1xx_hal::pac::USART1>,
-    serial1_rx: stm32f1xx_hal::serial::Rx<stm32f1xx_hal::pac::USART1>,
-    serial2_tx: stm32f1xx_hal::serial::Tx<stm32f1xx_hal::pac::USART2>,
+    serial1_tx: Tx<USART1>,
+    serial1_rx: Rx<USART1>,
+    serial2_tx: Tx<USART2>,
 }
 
 impl Application {
     fn init() {
-        let dp = pac::Peripherals::take().unwrap();
+        let dp = Peripherals::take().unwrap();
 
         let mut flash = dp.FLASH.constrain();
         let rcc = dp.RCC.constrain();
         let clocks = rcc
             .cfgr
+            // .use_hse(8_000_000.Hz())
+            // .sysclk(72_000_000.Hz())
+            // .hclk(72_000_000.Hz())
+            // .adcclk(12_000_000.Hz())
+            // .pclk1(36_000_000.Hz())
+            // .pclk2(72_000_000.Hz())
             .use_hse(8_000_000.Hz())
-            .sysclk(72_000_000.Hz())
-            .hclk(72_000_000.Hz())
-            .adcclk(12_000_000.Hz())
-            .pclk1(36_000_000.Hz())
-            .pclk2(72_000_000.Hz())
+            .sysclk(8_000_000.Hz())
+            .hclk(8_000_000.Hz())
+            .adcclk(4_000_000.Hz())
+            .pclk1(8_000_000.Hz())
+            .pclk2(8_000_000.Hz())
             .freeze(&mut flash.acr);
 
         let mut gpioa = dp.GPIOA.split();
@@ -67,7 +73,7 @@ impl Application {
                 gpioa.pa3.into_floating_input(&mut gpioa.crl),
             ),
             &mut afio.mapr,
-            Config::default().baudrate(115_200.bps()),
+            Config::default().baudrate(9_600.bps()),
             clocks,
         )
         .split();
@@ -88,8 +94,8 @@ impl Application {
 
     fn enable_interrupts() {
         unsafe {
-            cortex_m::peripheral::NVIC::unmask(stm32f1xx_hal::pac::Interrupt::RTC);
-            cortex_m::peripheral::NVIC::unmask(stm32f1xx_hal::pac::Interrupt::USART1);
+            NVIC::unmask(Interrupt::RTC);
+            NVIC::unmask(Interrupt::USART1);
         }
     }
 
@@ -100,7 +106,7 @@ impl Application {
     }
 
     fn on_rtc_internal(&mut self) {
-        trace!("RTC");
+        info!("RTC");
         self.rtc.clear_second_flag();
         let timestamp = self.rtc.current_time();
         self.time_writer.write(timestamp, |val| {
@@ -109,7 +115,7 @@ impl Application {
     }
 
     fn on_usart1_internal(&mut self) {
-        trace!("USART1");
+        info!("USART1");
         if let Ok(val) = self.serial1_rx.read() {
             self.time_sync.receive_word(val, |val| {
                 self.rtc.set_time(val);

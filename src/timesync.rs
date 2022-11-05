@@ -1,5 +1,5 @@
 
-use defmt::{trace, warn};
+use defmt::{info, warn};
 
 enum TimeSyncState {
     Begin,
@@ -31,7 +31,7 @@ impl TimeSync {
                     if let TimeSyncState::Magic1 = self.state {
                         self.state = TimeSyncState::Receiving;
                         self.value = 0;
-                        trace!("TimeSyncState::Receiving");
+                        info!("TimeSyncState::Receiving");
                         return;
                     }
                 }
