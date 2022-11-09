@@ -36,7 +36,10 @@ impl TimeSync {
                     }
                 }
                 b'c' => {
-                    write_value_callback(self.value);
+                    if let TimeSyncState::Receiving = self.state {
+                        info!("write_value_callback: {}", self.value);
+                        write_value_callback(self.value);
+                    }
                 }
                 _ => {}
             }

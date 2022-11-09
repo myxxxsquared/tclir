@@ -5,6 +5,9 @@ use defmt::{info, warn};
 use embedded_hal::serial::Write;
 use nb::block;
 use stm32f1xx_hal::{
+    adc::{Adc, Align, SampleTime},
+    device::ADC1,
+    gpio::{Analog, PA0},
     pac::{Interrupt, Peripherals, USART1, USART2},
     prelude::*,
     rtc::Rtc,
@@ -20,6 +23,8 @@ pub struct Application {
     serial1_tx: Tx<USART1>,
     serial1_rx: Rx<USART1>,
     serial2_tx: Tx<USART2>,
+    adc: Adc<ADC1>,
+    adc_ch0: PA0<Analog>,
 }
 
 impl Application {
@@ -78,6 +83,11 @@ impl Application {
         )
         .split();
 
+        let mut adc = Adc::adc1(dp.ADC1, clocks);
+        adc.set_align(Align::Right);
+        adc.set_sample_time(SampleTime::T_239);
+        let adc_ch0 = gpioa.pa0.into_analog(&mut gpioa.crl);
+
         let application = Application {
             rtc,
             time_sync: TimeSync::new(),
@@ -85,6 +95,8 @@ impl Application {
             serial1_tx,
             serial1_rx,
             serial2_tx,
+            adc,
+            adc_ch0,
         };
 
         unsafe {

@@ -3,37 +3,34 @@ use core::{
     panic::PanicInfo,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use defmt::{global_logger, Logger};
+use defmt::{error, global_logger, Logger};
 
 #[panic_handler]
 fn fn_on_panic(panic_info: &PanicInfo) -> ! {
     cortex_m::interrupt::disable();
+    unsafe {
+        ApplicationLogger::panic_acquire();
+    }
 
-    let logger_write = |val| {
-        unsafe { Application::logger_write(val) };
-    };
-    logger_write(b"PANIC: ");
+    error!("PANIC!!!");
+
     if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-        logger_write(s.as_bytes());
+        error!("INFO: {}", s);
     } else {
-        logger_write(b"no info");
+        error!("INFO: not string");
     }
-    logger_write(b"\n");
+
     if let Some(location) = panic_info.location() {
-        logger_write(b"FILE: ");
-        logger_write(location.file().as_bytes());
-        logger_write(b"\n LINE: 0x");
-        let lineno = location.line();
-        let mut lineno_str = [0u8; 8];
-        for i in 0..8 {
-            lineno_str[i] = match ((lineno >> (28 - 4 * i)) & 0xf) as u8 {
-                val if val < 10 => b'0' + val,
-                val => b'a' - 10 + val,
-            }
-        }
-        logger_write(&lineno_str);
-        logger_write(b"\n");
+        error!(
+            "LOCATION: {}, {}",
+            location.file().as_bytes(),
+            location.line()
+        );
     }
+    fn_after_panic();
+}
+
+fn fn_after_panic() -> ! {
     loop {
         let mut scb = unsafe { cortex_m::Peripherals::steal() }.SCB;
         let pwr = unsafe { stm32f1xx_hal::pac::Peripherals::steal() }.PWR;
@@ -48,15 +45,24 @@ static COUNT: AtomicUsize = AtomicUsize::new(0);
 defmt::timestamp!("{=usize}", COUNT.fetch_add(1, Ordering::Relaxed));
 
 static LOGGER_ACQUIRED: AtomicBool = AtomicBool::new(false);
+static mut LOGGER_PANIC: bool = false;
 
 #[global_logger]
 struct ApplicationLogger;
 
+impl ApplicationLogger {
+    unsafe fn panic_acquire() {
+        LOGGER_PANIC = true;
+    }
+}
+
 unsafe impl Logger for ApplicationLogger {
     fn acquire() {
-        let val = LOGGER_ACQUIRED.swap(true, Ordering::Relaxed);
-        if val {
-            panic!("Logger re-entrance.");
+        if !unsafe { LOGGER_PANIC } {
+            let val = LOGGER_ACQUIRED.swap(true, Ordering::Relaxed);
+            if val {
+                panic!("Logger re-entrance.");
+            }
         }
     }
 
