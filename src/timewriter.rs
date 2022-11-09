@@ -110,7 +110,7 @@ impl TimeWriter {
     }
 
     pub fn update_brightness(&mut self, val: u16, mut writer: impl FnMut(u8) -> ()) {
-        let mut new_brightness = self.current_brightness;
+        let new_brightness;
         if val < 400 {
             new_brightness = Brightness::B0;
             self.current_showing = false;
