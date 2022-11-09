@@ -111,6 +111,10 @@ impl Application {
         }
     }
 
+    fn read_sensor(&mut self) -> u16 {
+        self.adc.read(&mut self.adc_ch0).unwrap()
+    }
+
     fn run_internal(&mut self) -> ! {
         loop {
             wfi();
@@ -121,9 +125,16 @@ impl Application {
         info!("RTC");
         self.rtc.clear_second_flag();
         let timestamp = self.rtc.current_time();
-        self.time_writer.write(timestamp, |val| {
+        self.time_writer.update_time(timestamp, |val| {
             block!(self.serial2_tx.write(val)).unwrap();
         });
+        if timestamp % 10 == 0 {
+            let val = self.read_sensor();
+            info!("light: {}", val);
+            self.time_writer.update_brightness(val, |val| {
+                block!(self.serial2_tx.write(val)).unwrap();
+            });
+        }
     }
 
     fn on_usart1_internal(&mut self) {
