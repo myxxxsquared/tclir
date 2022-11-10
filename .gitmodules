@@ -1,0 +1,3 @@
+[submodule "stm32f1xx-hal"]
+    path = "stm32f1xx-hal"
+    url = "git@github.com:myxxxsquared/stm32f1xx-hal.git"
