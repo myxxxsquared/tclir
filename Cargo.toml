@@ -22,7 +22,7 @@ version = "0.15.1"
 features = ["stm32f103", "rt"]
 
 [dependencies.stm32f1xx-hal]
-version = "0.9.0"
+path = "stm32f1xx-hal"
 features = ["rt", "stm32f103", "medium"]
 
 [profile.release]
