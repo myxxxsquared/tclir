@@ -3,7 +3,7 @@
 set -x
 set -e
 
-BUILD_NAME=mytimecontroller
+BUILD_NAME=myclockfirmware
 # export DEFMT_LOG=info
 export DEFMT_LOG=warn
 

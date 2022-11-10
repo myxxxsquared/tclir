@@ -149,7 +149,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mytimecontroller"
+name = "myclockfirmware"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
