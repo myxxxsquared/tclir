@@ -1,6 +1,6 @@
 use stm32f1xx_hal::{device::TIM1, timer::PwmChannel};
 
-use crate::leds::{Colon, Digit, DigitCharSpace, DigitSetChar, LEDState, LEDS};
+use crate::leds::{Colon, DigitSetChar, LEDState, LEDS};
 
 struct DayTime {
     hour: u8,
@@ -13,31 +13,24 @@ const HOUR_LENGTH: u32 = MINUTE_LENGTH * 60;
 const DAY_LENGTH: u32 = HOUR_LENGTH * 24;
 
 pub struct TimeWriter {
-    current_brightness: Brightness,
-    current_showing: bool,
+    brightness: Brightness,
     first_run: bool,
     leds: LEDS,
     pwm: PwmChannel<TIM1, 0>,
 }
 
-#[repr(u8)]
+#[repr(u32)]
 #[derive(Copy, Clone, PartialEq)]
 enum Brightness {
-    B0 = 0,
-    _B1 = 1,
-    _B2 = 2,
-    _B3 = 3,
-    _B4 = 4,
-    _B5 = 5,
-    _B6 = 6,
-    B7 = 7,
+    B0 = 5,   // < 100
+    B1 = 30,  // 100 ~ 1000
+    B2 = 100, // > 1000
 }
 
 impl TimeWriter {
     pub fn new(leds: LEDS, pwm: PwmChannel<TIM1, 0>) -> TimeWriter {
         TimeWriter {
-            current_brightness: Brightness::B7,
-            current_showing: true,
+            brightness: Brightness::B2,
             first_run: true,
             leds,
             pwm,
@@ -70,17 +63,17 @@ impl TimeWriter {
         (val1, val2)
     }
 
-    fn write_hide(&mut self) {
-        self.leds.digit1().set_digit(DigitCharSpace);
-        self.leds.digit2().set_digit(DigitCharSpace);
-        self.leds.digit3().set_digit(DigitCharSpace);
-        self.leds.digit4().set_digit(DigitCharSpace);
-        self.leds.colon().set_colon(LEDState::N);
-    }
+    // fn write_hide(&mut self) {
+    //     self.leds.digit1().set_digit(DigitCharSpace);
+    //     self.leds.digit2().set_digit(DigitCharSpace);
+    //     self.leds.digit3().set_digit(DigitCharSpace);
+    //     self.leds.digit4().set_digit(DigitCharSpace);
+    //     self.leds.colon().set_colon(LEDState::N);
+    // }
 
     fn write_brightness(&mut self) {
         let pwm_max = self.pwm.get_max_duty();
-        let pwm = pwm_max / 10 / 7 * (self.current_brightness as u8 as u16);
+        let pwm = pwm_max - pwm_max / 1000 * (self.brightness as u8 as u16);
         self.pwm.set_duty(pwm);
     }
 
@@ -92,31 +85,31 @@ impl TimeWriter {
         self.leds.digit3().set_chr(hour2).unwrap();
         self.leds.digit2().set_chr(minute1).unwrap();
         self.leds.digit1().set_chr(minute2).unwrap();
-        self.leds.colon().set_colon(LEDState::Y);
+        self.leds.colon().set_colon(if timestamp % 2 == 0 {
+            LEDState::Y
+        } else {
+            LEDState::N
+        });
     }
 
     pub fn update_time(&mut self, timestamp: u32) {
-        if self.current_showing {
-            self.write_time(timestamp);
-        } else {
-            self.write_hide();
-        }
         if self.first_run {
             self.write_brightness();
         }
+        self.write_time(timestamp);
     }
 
     pub fn update_brightness(&mut self, val: u16) {
         let new_brightness;
-        if val < 400 {
+        if val < 100 {
             new_brightness = Brightness::B0;
-            self.current_showing = false;
+        } else if val < 1000 {
+            new_brightness = Brightness::B1;
         } else {
-            new_brightness = Brightness::B7;
-            self.current_showing = true;
+            new_brightness = Brightness::B2;
         }
-        if self.current_brightness != new_brightness {
-            self.current_brightness = new_brightness;
+        if self.brightness != new_brightness {
+            self.brightness = new_brightness;
             self.write_brightness();
         }
     }

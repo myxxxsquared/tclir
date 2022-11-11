@@ -207,11 +207,9 @@ impl Application {
         self.rtc.clear_second_flag();
         let timestamp = self.rtc.current_time();
         self.time_writer.update_time(timestamp);
-        if timestamp % 10 == 0 {
-            let val = self.read_sensor();
-            info!("light: {}", val);
-            self.time_writer.update_brightness(val);
-        }
+        let val = self.read_sensor();
+        info!("light: {}", val);
+        self.time_writer.update_brightness(val);
     }
 
     fn on_usart1_internal(&mut self) {

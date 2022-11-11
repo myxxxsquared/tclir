@@ -43,7 +43,7 @@ decl_digit_char!(DigitChar0, Y, Y, Y, N, Y, Y, Y);
 decl_digit_char!(DigitChar1, N, Y, N, N, Y, N, N);
 decl_digit_char!(DigitChar2, Y, Y, N, Y, N, Y, Y);
 decl_digit_char!(DigitChar3, Y, Y, N, Y, Y, N, Y);
-decl_digit_char!(DigitChar4, N, Y, Y, Y, Y, N, Y);
+decl_digit_char!(DigitChar4, N, Y, Y, Y, Y, N, N);
 decl_digit_char!(DigitChar5, Y, N, Y, Y, Y, N, Y);
 decl_digit_char!(DigitChar6, Y, N, Y, Y, Y, Y, Y);
 decl_digit_char!(DigitChar7, Y, Y, N, N, Y, N, N);
@@ -82,8 +82,8 @@ impl<T: Digit> DigitSetChar for T {
 
 fn set_led(pin: &mut impl OutputPin, state: LEDState) {
     match state {
-        LEDState::Y => pin.set_high().ok(),
-        LEDState::N => pin.set_low().ok(),
+        LEDState::Y => pin.set_low().ok(),
+        LEDState::N => pin.set_high().ok(),
     };
 }
 
