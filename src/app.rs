@@ -7,7 +7,7 @@ use nb::block;
 use stm32f1xx_hal::{
     adc::{Adc, Align, SampleTime},
     device::ADC1,
-    gpio::{Analog, PinState, PA0},
+    gpio::{gpioa, gpiob, gpioc, gpiod, Analog, PinState, PA0},
     pac::{Interrupt, Peripherals, USART1},
     prelude::*,
     rtc::Rtc,
@@ -16,11 +16,13 @@ use stm32f1xx_hal::{
 
 static mut APPLICATION: Option<Application> = None;
 
+// LOGGING_SERIAL is not in APPLICATION because anywhere will call LOGGING_SERIAL
+static mut LOGGING_SERIAL: Option<Tx<USART1>> = None;
+
 pub struct Application {
     rtc: Rtc,
     time_sync: TimeSync,
     time_writer: TimeWriter,
-    serial1_tx: Tx<USART1>,
     serial1_rx: Rx<USART1>,
     adc: Adc<ADC1>,
     adc_ch0: PA0<Analog>,
@@ -42,10 +44,56 @@ impl Application {
             .pclk2(8_000_000.Hz())
             .freeze(&mut flash.acr);
 
-        let mut gpioa = dp.GPIOA.split();
-        let mut gpiob = dp.GPIOB.split();
-        let mut gpioc = dp.GPIOC.split();
-        let mut gpiod = dp.GPIOD.split();
+        let gpioa::Parts {
+            pa0,
+            pa1,
+            pa2,
+            pa3,
+            pa4,
+            pa5,
+            pa6,
+            pa7,
+            pa8,
+            pa9,
+            pa10,
+            pa12,
+            pa13,
+            pa14,
+            pa15,
+            crh: mut acrh,
+            crl: mut acrl,
+            ..
+        } = dp.GPIOA.split();
+        let gpiob::Parts {
+            pb0,
+            pb1,
+            pb3,
+            pb4,
+            pb5,
+            pb6,
+            pb7,
+            pb8,
+            pb9,
+            pb10,
+            pb11,
+            pb12,
+            crh: mut bcrh,
+            crl: mut bcrl,
+            ..
+        } = dp.GPIOB.split();
+        let gpioc::Parts {
+            pc4,
+            pc5,
+            pc10,
+            pc11,
+            pc12,
+            crh: mut ccrh,
+            crl: mut ccrl,
+            ..
+        } = dp.GPIOC.split();
+        let gpiod::Parts {
+            pd2, crl: mut dcrl, ..
+        } = dp.GPIOD.split();
         let mut afio = dp.AFIO.constrain();
 
         let mut pwr = dp.PWR;
@@ -57,8 +105,8 @@ impl Application {
         let (serial1_tx, mut serial1_rx) = Serial::usart1(
             dp.USART1,
             (
-                gpioa.pa9.into_alternate_push_pull(&mut gpioa.crh),
-                gpioa.pa10.into_floating_input(&mut gpioa.crh),
+                pa9.into_alternate_push_pull(&mut acrh),
+                pa10.into_floating_input(&mut acrh),
             ),
             &mut afio.mapr,
             Config::default().baudrate(115_200.bps()),
@@ -70,7 +118,7 @@ impl Application {
         let mut pwm = dp
             .TIM1
             .pwm_hz(
-                gpioa.pa8.into_alternate_push_pull(&mut gpioa.crh),
+                pa8.into_alternate_push_pull(&mut acrh),
                 &mut afio.mapr,
                 1.kHz(),
                 &clocks,
@@ -81,89 +129,39 @@ impl Application {
         let mut adc = Adc::adc1(dp.ADC1, clocks);
         adc.set_align(Align::Right);
         adc.set_sample_time(SampleTime::T_239);
-        let adc_ch0 = gpioa.pa0.into_analog(&mut gpioa.crl);
+        let adc_ch0 = pa0.into_analog(&mut acrl);
 
-        let (pa13, pa14, pa15, pb3, pb4) = afio
-            .mapr
-            .disable_jtag(gpioa.pa13, gpioa.pa14, gpioa.pa15, gpiob.pb3, gpiob.pb4);
+        let (pa13, pa14, pa15, pb3, pb4) = afio.mapr.disable_jtag(pa13, pa14, pa15, pb3, pb4);
 
-        let p11 = pa15.into_push_pull_output_with_state(&mut gpioa.crh, PinState::High);
-        let p12 = gpioc
-            .pc12
-            .into_push_pull_output_with_state(&mut gpioc.crh, PinState::High);
-        let p13 = gpioc
-            .pc11
-            .into_push_pull_output_with_state(&mut gpioc.crh, PinState::High);
-        let p14 = pb3.into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p15 = gpiob
-            .pb6
-            .into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p16 = gpiob
-            .pb5
-            .into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p17 = gpiob
-            .pb7
-            .into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p21 = pa14.into_push_pull_output_with_state(&mut gpioa.crh, PinState::High);
-        let p22 = gpioc
-            .pc10
-            .into_push_pull_output_with_state(&mut gpioc.crh, PinState::High);
-        let p23 = pa13.into_push_pull_output_with_state(&mut gpioa.crh, PinState::High);
-        let p24 = gpiod
-            .pd2
-            .into_push_pull_output_with_state(&mut gpiod.crl, PinState::High);
-        let p25 = pb4.into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p26 = gpiob
-            .pb9
-            .into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
-        let p27 = gpiob
-            .pb8
-            .into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
-        let p31 = gpiob
-            .pb12
-            .into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
-        let p32 = gpiob
-            .pb10
-            .into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
-        let p33 = gpiob
-            .pb1
-            .into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p34 = gpioc
-            .pc4
-            .into_push_pull_output_with_state(&mut gpioc.crl, PinState::High);
-        let p35 = gpioa
-            .pa6
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let p36 = gpioa
-            .pa5
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let p37 = gpioa
-            .pa2
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let p41 = gpiob
-            .pb11
-            .into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
-        let p42 = gpiob
-            .pb0
-            .into_push_pull_output_with_state(&mut gpiob.crl, PinState::High);
-        let p43 = gpioc
-            .pc5
-            .into_push_pull_output_with_state(&mut gpioc.crl, PinState::High);
-        let p44 = gpioa
-            .pa7
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let p45 = gpioa
-            .pa4
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let p46 = gpioa
-            .pa3
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let p47 = gpioa
-            .pa1
-            .into_push_pull_output_with_state(&mut gpioa.crl, PinState::High);
-        let pcol = gpioa
-            .pa12
-            .into_push_pull_output_with_state(&mut gpioa.crh, PinState::High);
+        let p11 = pa15.into_push_pull_output_with_state(&mut acrh, PinState::High);
+        let p12 = pc12.into_push_pull_output_with_state(&mut ccrh, PinState::High);
+        let p13 = pc11.into_push_pull_output_with_state(&mut ccrh, PinState::High);
+        let p14 = pb3.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p15 = pb6.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p16 = pb5.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p17 = pb7.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p21 = pa14.into_push_pull_output_with_state(&mut acrh, PinState::High);
+        let p22 = pc10.into_push_pull_output_with_state(&mut ccrh, PinState::High);
+        let p23 = pa13.into_push_pull_output_with_state(&mut acrh, PinState::High);
+        let p24 = pd2.into_push_pull_output_with_state(&mut dcrl, PinState::High);
+        let p25 = pb4.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p26 = pb9.into_push_pull_output_with_state(&mut bcrh, PinState::High);
+        let p27 = pb8.into_push_pull_output_with_state(&mut bcrh, PinState::High);
+        let p31 = pb12.into_push_pull_output_with_state(&mut bcrh, PinState::High);
+        let p32 = pb10.into_push_pull_output_with_state(&mut bcrh, PinState::High);
+        let p33 = pb1.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p34 = pc4.into_push_pull_output_with_state(&mut ccrl, PinState::High);
+        let p35 = pa6.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let p36 = pa5.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let p37 = pa2.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let p41 = pb11.into_push_pull_output_with_state(&mut bcrh, PinState::High);
+        let p42 = pb0.into_push_pull_output_with_state(&mut bcrl, PinState::High);
+        let p43 = pc5.into_push_pull_output_with_state(&mut ccrl, PinState::High);
+        let p44 = pa7.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let p45 = pa4.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let p46 = pa3.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let p47 = pa1.into_push_pull_output_with_state(&mut acrl, PinState::High);
+        let pcol = pa12.into_push_pull_output_with_state(&mut acrh, PinState::High);
 
         let leds = LEDS::new(
             p11, p12, p13, p14, p15, p16, p17, p21, p22, p23, p24, p25, p26, p27, p31, p32, p33,
@@ -174,7 +172,6 @@ impl Application {
             rtc,
             time_sync: TimeSync::new(),
             time_writer: TimeWriter::new(leds, pwm),
-            serial1_tx,
             serial1_rx,
             adc,
             adc_ch0,
@@ -182,6 +179,7 @@ impl Application {
 
         unsafe {
             APPLICATION = Some(application);
+            LOGGING_SERIAL = Some(serial1_tx);
         }
     }
 
@@ -215,18 +213,12 @@ impl Application {
     fn on_usart1_internal(&mut self) {
         info!("USART1");
         if let Ok(val) = self.serial1_rx.read() {
-            self.time_sync.receive_word(val, |val| {
-                self.rtc.set_time(val);
+            if let Some(t) = self.time_sync.receive_word(val) {
+                self.rtc.set_time(t);
                 info!("Set time: {}", val);
-            });
+            }
         } else {
             warn!("USART1 receive error.");
-        }
-    }
-
-    fn logger_write_internal(&mut self, bytes: &[u8]) {
-        for b in bytes {
-            block!(self.serial1_tx.write(*b)).ok();
         }
     }
 
@@ -262,6 +254,10 @@ impl Application {
     }
 
     pub unsafe fn logger_write(bytes: &[u8]) {
-        Self::get_application().logger_write_internal(bytes);
+        for b in bytes {
+            if let Some(ref mut logging_serial) = LOGGING_SERIAL {
+                block!(logging_serial.write(*b)).ok();
+            }
+        }
     }
 }
