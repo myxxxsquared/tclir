@@ -8,11 +8,11 @@ unsafe fn main() -> ! {
 }
 
 #[interrupt]
-unsafe fn RTC() {
-    Application::on_rtc();
+unsafe fn USART1() {
+    Application::on_usart1();
 }
 
 #[interrupt]
-unsafe fn USART1() {
-    Application::on_usart1();
+unsafe fn TIM2() {
+    Application::on_tim2();
 }

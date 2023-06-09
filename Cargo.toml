@@ -1,5 +1,5 @@
 [package]
-name = "myclockfirmware"
+name = "tclir"
 version = "0.1.0"
 edition = "2021"
 
@@ -23,7 +23,7 @@ features = ["stm32f103", "rt"]
 
 [dependencies.stm32f1xx-hal]
 path = "stm32f1xx-hal"
-features = ["rt", "stm32f103", "medium"]
+features = ["rt", "stm32f103", "high"]
 
 [profile.release]
 codegen-units = 1
